@@ -23,6 +23,8 @@ enum Status {
 }
 
 describe('DuelsContract', () => {
+  const TWELVE_HOURS = 12 * 60 * 60;
+
   async function deployDuelsContractFixture() {
     const [owner, host, guest, other] = await ethers.getSigners();
 
@@ -76,7 +78,11 @@ describe('DuelsContract', () => {
     );
     const amount = ethers.parseEther(betAmount?.toString() || '100');
     await token.connect(host).approve(duelsContract.getAddress(), amount);
-    await duelsContract.connect(host).create(amount);
+
+    await expect(duelsContract.connect(host).create(amount)).to.emit(
+      duelsContract,
+      'DuelCreated'
+    );
 
     const count = await duelsContract.duelsCount();
     expect(count).to.be.greaterThan(0);
@@ -136,7 +142,10 @@ describe('DuelsContract', () => {
 
       const amount = ethers.parseEther('2');
       await token.connect(host).approve(duelsContract.getAddress(), amount);
-      await duelsContract.connect(host).create(amount);
+      await expect(duelsContract.connect(host).create(amount)).to.emit(
+        duelsContract,
+        'DuelCreated'
+      );
 
       const duel = await duelsContract.duels(0);
       const count = await duelsContract.duelsCount();
@@ -198,7 +207,10 @@ describe('DuelsContract', () => {
 
       const amount = ethers.parseEther('130');
       await token.connect(guest).approve(duelsContract.getAddress(), amount);
-      await duelsContract.connect(guest).join(0, amount);
+      await expect(duelsContract.connect(guest).join(0, amount)).to.emit(
+        duelsContract,
+        'DuelPlayed'
+      );
 
       const duel = await duelsContract.duels(0);
 
@@ -227,7 +239,10 @@ describe('DuelsContract', () => {
 
       const amount = ethers.parseEther('70');
       await token.connect(guest).approve(duelsContract.getAddress(), amount);
-      await duelsContract.connect(guest).join(0, amount);
+      await expect(duelsContract.connect(guest).join(0, amount)).to.emit(
+        duelsContract,
+        'DuelPlayed'
+      );
 
       const duel = await duelsContract.duels(0);
 
@@ -256,8 +271,10 @@ describe('DuelsContract', () => {
 
       const amount = ethers.parseEther('2');
       await token.connect(guest).approve(duelsContract.getAddress(), amount);
-      await expect(duelsContract.connect(guest).join(0, amount)).not.to.be
-        .reverted;
+      await expect(duelsContract.connect(guest).join(0, amount)).to.emit(
+        duelsContract,
+        'DuelPlayed'
+      );
 
       const duel = await duelsContract.duels(0);
       expect(duel.guest).to.equal(guest.address, 'Guest should be set');
@@ -292,7 +309,7 @@ describe('DuelsContract', () => {
       );
     });
 
-    it('Should if bet is out of allowed range', async () => {
+    it('Should revert if bet is out of allowed range', async () => {
       const { duelsContract, token, guest } = await loadFixture(
         deployDuelsContractFixture
       );
@@ -339,19 +356,18 @@ describe('DuelsContract', () => {
     });
 
     it('Should revert if duel is expired', async () => {
-      const { duelsContract, token, guest } = await loadFixture(
+      const { duelsContract, token, host, guest } = await loadFixture(
         deployDuelsContractFixture
       );
 
       await createDuel();
-
-      await time.increase(43_200);
+      await time.increase(TWELVE_HOURS);
 
       const amount = ethers.parseEther('70');
       await token.connect(guest).approve(duelsContract.getAddress(), amount);
-      await expect(
-        duelsContract.connect(guest).join(0, amount)
-      ).to.be.revertedWith('Duel is expired');
+      await expect(duelsContract.connect(guest).join(0, amount))
+        .to.emit(duelsContract, 'ReturnHostFunds')
+        .withArgs(0, host);
     });
   });
 
@@ -362,10 +378,16 @@ describe('DuelsContract', () => {
       );
       const amount = ethers.parseEther('2');
       await token.connect(host).approve(duelsContract.getAddress(), amount);
-      await duelsContract.connect(host).create(amount);
+      await expect(duelsContract.connect(host).create(amount)).to.emit(
+        duelsContract,
+        'DuelCreated'
+      );
 
       await token.connect(guest).approve(duelsContract.getAddress(), amount);
-      await duelsContract.connect(guest).join(0, amount);
+      await expect(duelsContract.connect(guest).join(0, amount)).to.emit(
+        duelsContract,
+        'DuelPlayed'
+      );
 
       const duel = await duelsContract.duels(0);
 
@@ -387,8 +409,10 @@ describe('DuelsContract', () => {
       const { winner } = await playGame();
       const ownerBalanceBefore = await token.balanceOf(owner.address);
       const winnerBalanceBefore = await token.balanceOf(winner.address);
-      await expect(duelsContract.connect(winner).withdraw(0)).to.not.be
-        .reverted;
+      await expect(duelsContract.connect(winner).withdraw(0)).to.emit(
+        duelsContract,
+        'DuelWithdrawn'
+      );
 
       const ownerBalanceAfter = await token.balanceOf(owner.address);
       const winnerBalanceAfter = await token.balanceOf(winner.address);
@@ -445,7 +469,7 @@ describe('DuelsContract', () => {
     it('Should allow owner to expire duel', async () => {
       const { duelsContract } = await loadFixture(deployDuelsContractFixture);
       await createDuel();
-      await time.increase(43_200);
+      await time.increase(TWELVE_HOURS);
       await expect(duelsContract.expire(0)).to.not.be.reverted;
     });
 

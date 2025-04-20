@@ -12,9 +12,9 @@
 
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 
 contract DuelsContract is ReentrancyGuard {
   using SafeERC20 for IERC20;
@@ -28,13 +28,10 @@ contract DuelsContract is ReentrancyGuard {
   struct Duel {
     address host;
     uint256 hostStake;
-
     address guest;
     uint256 guestStake;
-
     uint256 pool;
     address winner;
-
     uint256 createdAt;
     uint256 expiresAt;
     Status status;
@@ -53,26 +50,30 @@ contract DuelsContract is ReentrancyGuard {
 
   event DuelCreated(uint256 id, Duel duel);
   event DuelPlayed(uint256 id, Duel duel, address winner);
-  event ReturnHostFunds(uint256 id, Duel duel);
+  event ReturnHostFunds(uint256 id, address host);
   event DuelWithdrawn(uint256 id, Duel duel);
 
   constructor(address _token, uint256 _minAmount) {
-    require(_token != address(0), "Invalid token");
-    require(_minAmount > 0, "Invalid min amount");
+    require(_token != address(0), 'Invalid token');
+    require(_minAmount > 0, 'Invalid min amount');
     owner = msg.sender;
     token = IERC20(_token);
     minAmount = _minAmount;
   }
 
-  function defineWinner(uint256 _betUser1, uint256 _betUser2) private view returns (uint8) {
+  function defineWinner(
+    uint256 _betUser1,
+    uint256 _betUser2
+  ) private view returns (uint8) {
     uint _chanceForOne = (_betUser1 * 100) / (_betUser1 + _betUser2);
-    uint _random = uint(keccak256(
-      abi.encodePacked(block.timestamp, block.prevrandao, msg.sender))) % 100;
+    uint _random = uint(
+      keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender))
+    ) % 100;
     return _random < _chanceForOne ? 1 : 2;
   }
 
   function create(uint256 amount) external nonReentrant {
-    require(amount >= minAmount, "Invalid initial bet");
+    require(amount >= minAmount, 'Invalid initial bet');
 
     token.safeTransferFrom(msg.sender, address(this), amount);
 
@@ -95,23 +96,25 @@ contract DuelsContract is ReentrancyGuard {
   function join(uint256 _id, uint256 amount) external nonReentrant {
     Duel storage duel = duels[_id];
 
-    require(msg.sender != duel.host, "Host cannot join as guest");
-    require(duel.guest == address(0), "Duel is already played");
-    require(duel.winner == address(0), "Duel is already played");
-    require(duel.status == Status.AwaitingGuest, "Duel is already played");
+    require(msg.sender != duel.host, 'Host cannot join as guest');
+    require(duel.guest == address(0), 'Duel is already played');
+    require(duel.winner == address(0), 'Duel is already played');
+    require(duel.status == Status.AwaitingGuest, 'Duel is already played');
 
     if (block.timestamp > duel.expiresAt) {
-      emit ReturnHostFunds(_id, duel);
-      revert("Duel is expired");
+      emit ReturnHostFunds(_id, duel.host);
+      return;
     }
 
     uint256 _hostStake = duel.hostStake;
-    uint256 _upperBound = _hostStake + (_hostStake * BET_RANGE / 100);
-    uint256 _lowerBound = _hostStake - (_hostStake * BET_RANGE / 100);
+    uint256 _upperBound = _hostStake + ((_hostStake * BET_RANGE) / 100);
+    uint256 _lowerBound = _hostStake - ((_hostStake * BET_RANGE) / 100);
     if (_lowerBound < minAmount) _lowerBound = minAmount;
 
-    require(amount >= _lowerBound && amount <= _upperBound, 
-      "Initial bet must be within the allowed range of initial bet and greater or equal to min amount");
+    require(
+      amount >= _lowerBound && amount <= _upperBound,
+      'Initial bet must be within the allowed range of initial bet and greater or equal to min amount'
+    );
 
     token.safeTransferFrom(msg.sender, address(this), amount);
 
@@ -129,12 +132,15 @@ contract DuelsContract is ReentrancyGuard {
   function withdraw(uint256 _id) external nonReentrant {
     Duel storage duel = duels[_id];
 
-    require(duel.winner == msg.sender, "Only the winner can withdraw");
-    require(duel.pool > 0, "Duel has no pool");
-    require(duel.status == Status.WithdrawAvailable, "Withdraw is not available");
+    require(duel.winner == msg.sender, 'Only the winner can withdraw');
+    require(duel.pool > 0, 'Duel has no pool');
+    require(
+      duel.status == Status.WithdrawAvailable,
+      'Withdraw is not available'
+    );
 
     uint256 _pool = duel.pool;
-    uint256 _platformFee = _pool * PLATFORM_FEE / 100;
+    uint256 _platformFee = (_pool * PLATFORM_FEE) / 100;
 
     // Transfer winnings to winner (minus fee)
     token.safeTransfer(duel.winner, _pool - _platformFee);
@@ -149,9 +155,9 @@ contract DuelsContract is ReentrancyGuard {
 
   function expire(uint256 _id) external {
     Duel storage duel = duels[_id];
-    require(msg.sender == owner, "Only owner can expire duels");
-    require(duel.status == Status.AwaitingGuest, "Duel is not expired");
-    require(block.timestamp > duel.expiresAt, "Duel is not expired yet");
+    require(msg.sender == owner, 'Only owner can expire duels');
+    require(duel.status == Status.AwaitingGuest, 'Duel is not expired');
+    require(block.timestamp > duel.expiresAt, 'Duel is not expired yet');
 
     duel.status = Status.Withdrawn;
     // Return tokens to host
